@@ -1,0 +1,51 @@
+# ── Build outputs ───────────────────────────────────────────────────────────
+target/
+installer/target/
+build/
+
+# ── IDE / Editors ───────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ── Maven ────────────────────────────────────────────────────────────────────
+dependency-reduced-pom.xml
+*.mvn/wrapper/maven-wrapper.jar
+
+# ── Logs & runtime output ────────────────────────────────────────────────────
+lastrun.log
+*.log
+
+# ── JModLoader runtime data ──────────────────────────────────────────────────
+Mods/
+libs/
+.jmodloader/
+JModLoader/
+
+# ── Windows ──────────────────────────────────────────────────────────────────
+*.dll
+*.exe
+*.bat
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Linux ────────────────────────────────────────────────────────────────────
+*.so
+*.so.*
+*.a
+*.o
+core
+core.*
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
+*.orig
+*.rej
