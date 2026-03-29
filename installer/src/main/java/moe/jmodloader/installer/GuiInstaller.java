@@ -238,7 +238,7 @@ public class GuiInstaller extends JFrame {
     }
 
     private String getVersion() {
-        return "1.1.0";
+        return "1.1.2";
     }
 
     private void checkExistingInstall() {

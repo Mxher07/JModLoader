@@ -21,11 +21,11 @@ import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@Command(name = "jml", mixinStandardHelpOptions = true, version = "JModLoader 1.1.0",
+@Command(name = "jml", mixinStandardHelpOptions = true, version = "JModLoader 1.1.2",
         description = "JModLoader - A powerful Java Mod Loader and Build Tool")
 public class JModLoaderCLI implements Callable<Integer> {
 
-    private static final String VERSION = "1.1.0";
+    private static final String VERSION = "1.1.2";
     private static final String UPDATE_URL = "https://api.github.com/repos/Mxher07/JModLoader/releases/latest";
 
     private String jmlHome;

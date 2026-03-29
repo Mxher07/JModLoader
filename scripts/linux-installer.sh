@@ -12,7 +12,7 @@ BIN_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/jmodloader"
 DESKTOP_DIR="/usr/share/applications"
 ARCH=$(uname -m)
-INSTALL_VERSION="@VERSION@"
+INSTALL_VERSION="1.1.2"
 
 # ── i18n ──────────────────────────────────────────
 en_US() {

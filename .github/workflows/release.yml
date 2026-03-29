@@ -11,47 +11,13 @@ on:
 env:
   VERSION: ${{ inputs.version }}
   JAVA_VERSION: '24'
-  MVN_VERSION: '3.9.9'
-  GITHUB_REPO: 'Mxher07/JModLoader'
+  GITHUB_REPO: Mxher07/JModLoader
 
 jobs:
   # ─────────────────────────────────────────────────
-  # 1. Build JAR
+  # Job 1: Build main JAR
   # ─────────────────────────────────────────────────
   build:
-    runs-on: ubuntu-latest
-    outputs:
-      jar_path: ${{ steps.build.outputs.jar_path }}
-      jar_name: ${{ steps.build.outputs.jar_name }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-
-      - name: Build JAR
-        id: build
-        run: |
-          mvn clean package -q -DskipTests
-          JAR=$(find target -name 'jmodloader-*.jar' ! -name 'original-*' | head -1)
-          echo "jar_path=$JAR" >> $GITHUB_OUTPUT
-          echo "jar_name=$(basename $JAR)" >> $GITHUB_OUTPUT
-
-      - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: jmodloader-jar
-          path: ${{ steps.build.outputs.jar_path }}
-          retention-days: 7
-
-  # ─────────────────────────────────────────────────
-  # 2. Build Windows EXE (Launch4j)
-  # ─────────────────────────────────────────────────
-  build-exe:
-    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,15 +31,42 @@ jobs:
       - name: Build JAR
         run: mvn clean package -q -DskipTests
 
-      - name: Download JAR
-        run: echo "jar=$(find target -name 'jmodloader-*.jar' ! -name 'original-*' | head -1)" >> $GITHUB_ENV
-
-      - name: Download Launch4j
+      - name: Find JAR
+        id: jar
         run: |
-          mkdir -p /tmp/launch4j
-          curl -sL https://github.com/lanwenchang/launch4j-maven-plugin/releases/download/v1.5.3/launch4j-maven-plugin-1.5.3.jar -o /tmp/launch4j/launch4j-maven-plugin.jar
+          JAR=$(find target -name 'jmodloader-*.jar' ! -name 'original-*' | head -n1)
+          echo "jar_path=$JAR" >> $GITHUB_OUTPUT
+          echo "jar_name=$(basename $JAR)" >> $GITHUB_OUTPUT
 
-      - name: Build EXE with Launch4j
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmodloader-jar
+          path: ${{ steps.jar.outputs.jar_path }}
+          retention-days: 3
+
+  # ─────────────────────────────────────────────────
+  # Job 2: Build Windows EXE (Launch4j via Maven plugin)
+  # ─────────────────────────────────────────────────
+  build-exe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      # 下载 build job 的产物
+      - name: Download JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: jmodloader-jar
+          path: build/
+
+      - name: Build EXE with Launch4j Maven Plugin
         run: |
           cat > pom-launch4j.xml << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -87,17 +80,16 @@ jobs:
                 <plugin>
                   <groupId>com.akathist.maven.plugins.launch4j</groupId>
                   <artifactId>launch4j-maven-plugin</artifactId>
-                  <version>1.5.3</version>
+                  <version>2.5.0</version>
                   <executions>
                     <execution>
-                      <id>l4j-clui</id>
+                      <id>l4j</id>
                       <phase>package</phase>
                       <goals><goal>launch4j</goal></goals>
                       <configuration>
                         <headerType>gui</headerType>
                         <outfile>target/jmodloader-${{ env.VERSION }}.exe</outfile>
-                        <jar>target/jmodloader-${{ env.VERSION }}.jar</jar>
-                        <icon>src/main/resources/icon.ico</icon>
+                        <jar>build/jmodloader-${{ env.VERSION }}.jar</jar>
                         <jre>
                           <minVersion>17.0.0</minVersion>
                           <jdkPreference>preferJre</jdkPreference>
@@ -119,112 +111,116 @@ jobs:
             </build>
           </project>
           EOF
+          mvn package -f pom-launch4j.xml -q
 
-          # Download icon placeholder
-          mkdir -p src/main/resources
-
-          mvn package -f pom-launch4j.xml -DskipTests 2>&1 || echo "Launch4j build attempted"
-
-          if [ -f target/jmodloader-${{ env.VERSION }}.exe ]; then
-            echo "EXE built successfully"
+      - name: Check EXE
+        id: check_exe
+        run: |
+          if [ -f "target/jmodloader-${{ env.VERSION }}.exe" ]; then
+            echo "exe_exists=true" >> $GITHUB_OUTPUT
+            echo "Found EXE: target/jmodloader-${{ env.VERSION }}.exe"
           else
-            echo "EXE not built, creating stub"
-            # Create a minimal placeholder
-            echo "JModLoader ${{ env.VERSION }} EXE" > target/jmodloader-${{ env.VERSION }}.exe.txt
+            echo "exe_exists=false" >> $GITHUB_OUTPUT
+            echo "WARNING: EXE not found!"
+            ls -la target/
           fi
 
-      - name: Upload EXE artifact
+      - name: Upload EXE
+        if: steps.check_exe.outputs.exe_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: jmodloader-exe
           path: target/jmodloader-${{ env.VERSION }}.exe
-          retention-days: 7
+          retention-days: 3
 
   # ─────────────────────────────────────────────────
-  # 3. Build Windows GUI Installer
+  # Job 3: Build Windows GUI Installer JAR
   # ─────────────────────────────────────────────────
-  build-win-installer:
-    needs: build
+  build-installer:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
 
-      - name: Build installer JAR
-        run: |
-          cd installer
-          mvn clean package -q -DskipTests -Dversion=${{ env.VERSION }}
-
-      - name: Download JAR artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: jmodloader-jar
-          path: target/
-
-      - name: Bundle installer
-        run: |
-          mkdir -p output
-          cp target/jmodloader-*.jar ! -name 'original-*' target-installer/jmodloader-installer.jar
-          ls -la target/
-
-      - name: Upload installer JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: jmodloader-installer-jar
-          path: target/jmodloader-installer-*.jar
-          retention-days: 7
-
-  # ─────────────────────────────────────────────────
-  # 4. Build Linux DEB Package
-  # ─────────────────────────────────────────────────
-  build-linux-deb:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq fakeroot dpkg-dev debhelper make gzip
-
+      # 下载 build job 的产物（主要给 installer 打包参考）
       - name: Download JAR
         uses: actions/download-artifact@v4
         with:
           name: jmodloader-jar
-          path: ./
+          path: build/
 
-      - name: Build DEB package
+      - name: Build installer JAR
         run: |
-          mkdir -p jmodloader-${{ env.VERSION }}/DEBIAN
-          mkdir -p jmodloader-${{ env.VERSION }}/usr/share/jmodloader
-          mkdir -p jmodloader-${{ env.VERSION }}/usr/bin
-          mkdir -p jmodloader-${{ env.VERSION }}/usr/share/doc/jmodloader
+          cd installer
+          mvn clean package -q -DskipTests
 
-          # Copy JAR
-          cp jmodloader-${{ env.VERSION }}.jar jmodloader-${{ env.VERSION }}/usr/share/jmodloader/
-          cp jmodloader-${{ env.VERSION }}.jar jmodloader-${{ env.VERSION }}/usr/share/jmodloader/jmodloader.jar
+      - name: Find installer JAR
+        id: inst
+        run: |
+          JAR=$(find target -name 'jmodloader-installer*.jar' ! -name 'original-*' | grep -v sources | grep -v javadoc | head -n1)
+          echo "installer_jar=$JAR" >> $GITHUB_OUTPUT
 
-          # Create CLI wrapper
-          cat > jmodloader-${{ env.VERSION }}/usr/bin/jml << 'WRAPPER'
+      - name: Upload installer JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmodloader-installer-jar
+          path: ${{ steps.inst.outputs.installer_jar }}
+          retention-days: 3
+
+  # ─────────────────────────────────────────────────
+  # Job 4: Build Linux DEB Package
+  # ─────────────────────────────────────────────────
+  build-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 下载 build job 的产物
+      - name: Download JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: jmodloader-jar
+          path: build/
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fakeroot dpkg-dev debhelper make gzip
+
+      - name: Build DEB
+        run: |
+          PKG=jmodloader-${{ env.VERSION }}
+          mkdir -p $PKG/DEBIAN
+          mkdir -p $PKG/usr/share/jmodloader
+          mkdir -p $PKG/usr/bin
+          mkdir -p $PKG/usr/share/doc/jmodloader
+
+          # Copy JAR (find the actual file, not glob)
+          JAR_FILE=$(find build -name 'jmodloader-*.jar' ! -name 'original-*' | head -n1)
+          cp "$JAR_FILE" $PKG/usr/share/jmodloader/jmodloader.jar
+          cp "$JAR_FILE" $PKG/usr/share/jmodloader/jmodloader-${{ env.VERSION }}.jar
+
+          # CLI wrapper
+          cat > $PKG/usr/bin/jml << 'WRAPPER'
           #!/bin/sh
           exec java -jar /usr/share/jmodloader/jmodloader.jar "$@"
           WRAPPER
-          chmod +x jmodloader-${{ env.VERSION }}/usr/bin/jml
+          chmod +x $PKG/usr/bin/jml
 
           # Copy installer script
-          cp scripts/linux-installer.sh jmodloader-${{ env.VERSION }}/usr/share/jmodloader/install.sh
+          cp scripts/linux-installer.sh $PKG/usr/share/jmodloader/install.sh
+          chmod +x $PKG/usr/share/jmodloader/install.sh
 
-          # Create conffiles (list of config files that should be preserved)
-          echo "/etc/jmodloader/config.properties" > jmodloader-${{ env.VERSION }}/DEBIAN/conffiles
+          # DEBIAN/conffiles
+          echo "/etc/jmodloader/config.properties" > $PKG/DEBIAN/conffiles
 
-          # Create control file
-          cat > jmodloader-${{ env.VERSION }}/DEBIAN/control << CONTROL
+          # DEBIAN/control
+          cat > $PKG/DEBIAN/control << CONTROL
           Package: jmodloader
           Version: ${{ env.VERSION }}
           Section: utils
@@ -237,36 +233,37 @@ jobs:
            managing Java mods and projects.
           CONTROL
 
-          # Create postinst
-          cat > jmodloader-${{ env.VERSION }}/DEBIAN/postinst << POSTINST
+          # DEBIAN/postinst
+          cat > $PKG/DEBIAN/postinst << POSTINST
           #!/bin/sh
-          if [ -d /usr/bin ] && [ ! -L /usr/bin/jml ]; then
+          if [ -d /usr/bin ] && [ ! -e /usr/bin/jml ]; then
               ln -sf /usr/share/jmodloader/install.sh /usr/bin/jml 2>/dev/null || true
           fi
           POSTINST
-          chmod +x jmodloader-${{ env.VERSION }}/DEBIAN/postinst
+          chmod +x $PKG/DEBIAN/postinst
 
-          # Create copyright
-          cat > jmodloader-${{ env.VERSION }}/usr/share/doc/jmodloader/copyright << 'CP'
+          # copyright
+          cat > $PKG/usr/share/doc/jmodloader/copyright << 'CP'
           This package is licensed under MIT.
           CP
 
-          # Build package
-          dpkg-deb --build jmodloader-${{ env.VERSION }}
-          mv jmodloader-${{ env.VERSION }}.deb output/
+          # Build
+          mkdir -p output
+          dpkg-deb --build $PKG output/
+          mv output/$PKG.deb output/jmodloader-${{ env.VERSION }}.deb
 
-      - name: Upload DEB artifact
+      - name: Upload DEB
         uses: actions/upload-artifact@v4
         with:
           name: jmodloader-deb
           path: output/jmodloader-${{ env.VERSION }}.deb
-          retention-days: 7
+          retention-days: 3
 
   # ─────────────────────────────────────────────────
-  # 5. Publish GitHub Release
+  # Job 5: Publish GitHub Release (depends on all above)
   # ─────────────────────────────────────────────────
   publish-release:
-    needs: [build, build-exe, build-linux-deb]
+    needs: [build, build-exe, build-installer, build-deb]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -276,43 +273,60 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: '*'
           path: artifacts/
+          merge-multiple: true
 
-      - name: List artifacts
-        run: find artifacts/ -type f | sort
+      - name: List downloaded files
+        run: |
+          echo "=== Artifacts ==="
+          find artifacts/ -type f | sort
+          echo ""
+          echo "=== JAR ==="
+          ls -lh artifacts/*.jar 2>/dev/null || echo "No JAR found"
+          echo "=== EXE ==="
+          ls -lh artifacts/*.exe 2>/dev/null || echo "No EXE found"
+          echo "=== DEB ==="
+          ls -lh artifacts/*.deb 2>/dev/null || echo "No DEB found"
 
-      - name: Create GitHub Release
+      - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find all files
-          JAR=$(find artifacts/ -name 'jmodloader-*.jar' ! -name 'original-*' | grep -v installer | head -1)
-          EXE=$(find artifacts/ -name 'jmodloader-*.exe' | head -1)
-          DEB=$(find artifacts/ -name 'jmodloader-*.deb' | head -1)
+          JAR=$(find artifacts/ -name 'jmodloader-*.jar' ! -name 'original-*' | grep -v installer | head -n1)
+          EXE=$(find artifacts/ -name '*.exe' 2>/dev/null | head -n1)
+          DEB=$(find artifacts/ -name '*.deb' 2>/dev/null | head -n1)
 
           echo "JAR: $JAR"
           echo "EXE: $EXE"
           echo "DEB: $DEB"
 
-          # Create release
-          if [ -n "$EXE" ]; then
-            gh release create v${{ env.VERSION }} \
-              --title "JModLoader v${{ env.VERSION }}" \
-              --notes "JModLoader v${{ env.VERSION }} Release
+          ATTACH=()
+          [ -n "$JAR" ] && ATTACH+=("$JAR")
+          [ -n "$EXE" ] && ATTACH+=("$EXE")
+          [ -n "$DEB" ] && ATTACH+=("$DEB")
+
+          if [ ${#ATTACH[@]} -eq 0 ]; then
+            echo "ERROR: No artifacts found to attach!"
+            exit 1
+          fi
+
+          echo "Attaching ${#ATTACH[@]} file(s) to release..."
+
+          gh release create v${{ env.VERSION }} \
+            --title "JModLoader v${{ env.VERSION }}" \
+            --notes "## JModLoader v${{ env.VERSION }}
 
   ## Downloads
-  - Windows EXE: $(basename $EXE)
-  - Linux DEB: $(basename $DEB)
-  - JAR: $(basename $JAR)
+  $([ -n "$JAR" ] && echo "- **JAR**: \`$(basename $JAR)\`")
+  $([ -n "$EXE" ] && echo "- **Windows EXE**: \`$(basename $EXE)\`")
+  $([ -n "$DEB" ] && echo "- **Linux DEB**: \`$(basename $DEB)\`")
 
-  ## Changes
-  - See CHANGELOG.md for details." \
-              "$JAR" "$EXE" "$DEB" \
-              --repo ${{ env.GITHUB_REPO }}
-          else
-            gh release create v${{ env.VERSION }} \
-              --title "JModLoader v${{ env.VERSION }}" \
-              --notes "JModLoader v${{ env.VERSION }} Release" \
-              "$JAR" \
-              --repo ${{ env.GITHUB_REPO }}
-          fi
+  ## Installation
+  - Windows: Run the EXE installer or use the JAR directly.
+  - Linux: \`sudo dpkg -i $(basename $DEB)\`
+  - Or download the JAR and run: \`java -jar $(basename $JAR)\`" \
+            "${ATTACH[@]}" \
+            --repo ${{ env.GITHUB_REPO }}
+
+          echo "Release created successfully!"
