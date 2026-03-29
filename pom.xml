@@ -34,10 +34,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <source>24</source>
-                    <target>24</target>
-                    <fork>true</fork>
-                    <executable>C:\Program Files\Java\jdk-24\bin\javac.exe</executable>
+                    <source>21</source>
+                    <target>21</target>
                 </configuration>
             </plugin>
             <plugin>
