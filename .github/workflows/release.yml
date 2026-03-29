@@ -301,32 +301,33 @@ jobs:
           echo "EXE: $EXE"
           echo "DEB: $DEB"
 
-          ATTACH=()
-          [ -n "$JAR" ] && ATTACH+=("$JAR")
-          [ -n "$EXE" ] && ATTACH+=("$EXE")
-          [ -n "$DEB" ] && ATTACH+=("$DEB")
-
-          if [ ${#ATTACH[@]} -eq 0 ]; then
-            echo "ERROR: No artifacts found to attach!"
+          if [ -z "$JAR" ]; then
+            echo "ERROR: No JAR artifact found!"
             exit 1
           fi
 
-          echo "Attaching ${#ATTACH[@]} file(s) to release..."
+          ATTACHMENTS=("$JAR")
+          [ -n "$EXE" ] && ATTACHMENTS+=("$EXE")
+          [ -n "$DEB" ] && ATTACHMENTS+=("$DEB")
 
-          gh release create v${{ env.VERSION }} \
+          echo "Attaching ${#ATTACHMENTS[@]} file(s)..."
+
+          # Build release notes using printf (avoids YAML multi-line string issues)
+          EXE_LINE=""
+          DEB_LINE=""
+          [ -n "$EXE" ] && EXE_LINE=$(printf '\n- **Windows EXE**: `%s`' "$(basename $EXE)")
+          [ -n "$DEB" ] && DEB_LINE=$(printf '\n- **Linux DEB**: `%s`' "$(basename $DEB)")
+
+          NOTES=$(printf '## JModLoader v%s\n\n## Downloads\n- **JAR**: `%s`%s%s\n\n## Installation\n- **Windows**: Run the EXE installer or use the JAR directly.\n- **Linux**: `sudo dpkg -i <deb-file>`\n- Or run: `java -jar jmodloader-<version>.jar`' \
+            "${{ env.VERSION }}" \
+            "$(basename $JAR)" \
+            "$EXE_LINE" \
+            "$DEB_LINE")
+
+          gh release create "v${{ env.VERSION }}" \
             --title "JModLoader v${{ env.VERSION }}" \
-            --notes "## JModLoader v${{ env.VERSION }}
-
-  ## Downloads
-  $([ -n "$JAR" ] && echo "- **JAR**: \`$(basename $JAR)\`")
-  $([ -n "$EXE" ] && echo "- **Windows EXE**: \`$(basename $EXE)\`")
-  $([ -n "$DEB" ] && echo "- **Linux DEB**: \`$(basename $DEB)\`")
-
-  ## Installation
-  - Windows: Run the EXE installer or use the JAR directly.
-  - Linux: \`sudo dpkg -i $(basename $DEB)\`
-  - Or download the JAR and run: \`java -jar $(basename $JAR)\`" \
-            "${ATTACH[@]}" \
+            --notes "$NOTES" \
+            "${ATTACHMENTS[@]}" \
             --repo ${{ env.GITHUB_REPO }}
 
           echo "Release created successfully!"
