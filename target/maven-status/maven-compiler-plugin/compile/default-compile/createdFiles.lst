@@ -1,7 +1,0 @@
-moe\jmodloader\core\ModClassLoader.class
-moe\jmodloader\core\ModLoader$PrefixPrintStream.class
-moe\jmodloader\core\ModBuilder.class
-moe\jmodloader\core\JModLoaderCLI.class
-moe\jmodloader\core\ModLoader.class
-moe\jmodloader\api\ModSpec.class
-moe\jmodloader\utils\I18n.class
