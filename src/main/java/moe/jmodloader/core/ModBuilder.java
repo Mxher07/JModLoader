@@ -98,8 +98,6 @@ public class ModBuilder {
         cmd.add(classesDir.getAbsolutePath());
         cmd.add("-encoding");
         cmd.add("UTF-8");
-        cmd.add("--release");
-        cmd.add("24");
 
         // Classpath: . + libs/*.jar
         StringBuilder cp = new StringBuilder(".");
@@ -117,7 +115,7 @@ public class ModBuilder {
         cmd.add(cp.toString());
         cmd.addAll(javaFiles);
 
-        System.out.println("Compiling with: javac --release 24");
+        System.out.println("Compiling with: javac");
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.inheritIO();
         int code = pb.start().waitFor();
